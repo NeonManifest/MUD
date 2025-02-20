@@ -1,0 +1,11 @@
+{
+  "name": "mud",
+  "version": "1.0.0",
+  "description": "MUD game with server and web client",
+  "scripts": {
+    "start": "start.bat"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
