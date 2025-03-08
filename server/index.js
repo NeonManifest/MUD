@@ -1,7 +1,9 @@
 const express = require("express");
 const http = require("http");
 const socketIo = require("socket.io");
-const cors = require("cors"); // You'll need to install this: npm install cors
+const cors = require("cors");
+const { db, auth } = require("./firebase");
+const { Player } = require("./entities/entity");
 
 // Helper function to get the opposite direction
 function getOppositeDirection(direction) {
@@ -87,23 +89,62 @@ const players = {};
 io.on("connection", (socket) => {
   console.log("A user connected");
 
-  // Initialize player
+  // Initialize player in limbo
   players[socket.id] = {
     id: socket.id,
-    name: `Player_${socket.id.substring(0, 4)}`,
-    currentRoom: "town-square",
+    name: null,
+    currentRoom: "limbo",
   };
 
   // Send welcome message
-  socket.emit(
-    "message",
-    `Welcome to the MUD! You are in the ${world.rooms["town-square"].name}.`
-  );
-  socket.emit("message", world.rooms["town-square"].description);
+  socket.emit("message", "Welcome to the MUD! Please register or log in.");
 
-  // List available exits
-  const exits = Object.keys(world.rooms["town-square"].exits).join(", ");
-  socket.emit("message", `Exits: ${exits}`);
+  socket.on("register", async ({ idToken, characterName }) => {
+    try {
+      // Verify the ID token using Firebase Admin SDK
+      const decodedToken = await auth.verifyIdToken(idToken);
+      const uid = decodedToken.uid;
+
+      const player = new Player(characterName, "A new adventurer");
+      await db.collection("characters").doc(uid).set({
+        name: player.name,
+        attributes: player.attributes,
+        inventory: player.inventory,
+      });
+
+      players[socket.id].name = characterName;
+      socket.emit(
+        "message",
+        "Registration successful! You can now enter the game."
+      );
+    } catch (error) {
+      socket.emit("message", `Registration failed: ${error.message}`);
+    }
+  });
+
+  socket.on("login", async (idToken) => {
+    try {
+      // Verify the ID token using Firebase Admin SDK
+      const decodedToken = await auth.verifyIdToken(idToken);
+      const uid = decodedToken.uid;
+
+      // Retrieve the character document from Firestore
+      const characterDoc = await db.collection("characters").doc(uid).get();
+      if (characterDoc.exists) {
+        const characterData = characterDoc.data();
+        players[socket.id].name = characterData.name;
+        players[socket.id].currentRoom = "town-square"; // Move player to starting room
+        socket.emit(
+          "message",
+          `Welcome back, ${characterData.name}! You are now in the town square.`
+        );
+      } else {
+        socket.emit("message", "Character not found.");
+      }
+    } catch (error) {
+      socket.emit("message", `Login failed: ${error.message}`);
+    }
+  });
 
   socket.on("disconnect", () => {
     console.log("User disconnected");
@@ -111,8 +152,13 @@ io.on("connection", (socket) => {
   });
 
   socket.on("command", (command) => {
-    const [cmd, ...args] = command.split(" ");
     const player = players[socket.id];
+    // Check if the player is logged in
+    if (!player.name) {
+      socket.emit("message", "You must be logged in to perform commands.");
+      return;
+    }
+    const [cmd, ...args] = command.split(" ");
 
     switch (cmd.toLowerCase()) {
       case "say":
@@ -205,29 +251,10 @@ io.on("connection", (socket) => {
           socket.emit("message", `You cannot go ${direction} from here.`);
         }
         break;
-      case "name":
-        if (args.length > 0) {
-          const newName = args.join(" ");
-          const oldName = player.name;
-          player.name = newName;
-          socket.emit("message", `You are now known as ${newName}.`);
-          // Inform others in the same room
-          Object.values(players).forEach((p) => {
-            if (p.id !== socket.id && p.currentRoom === player.currentRoom) {
-              io.to(p.id).emit(
-                "message",
-                `${oldName} is now known as ${newName}.`
-              );
-            }
-          });
-        } else {
-          socket.emit("message", "Your name is " + player.name);
-        }
-        break;
       default:
         socket.emit(
           "message",
-          "Unknown command. Try: say, look, go, north, south, east, west, name"
+          "Unknown command. Try: say, look, go, north, south, east, west, who"
         );
     }
   });
