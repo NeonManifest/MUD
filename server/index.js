@@ -4,6 +4,7 @@ const socketIo = require("socket.io");
 const cors = require("cors");
 const { db, auth } = require("./firebase");
 const { Player } = require("./entities/entity");
+const Filter = require("bad-words");
 
 // Helper function to get the opposite direction
 function getOppositeDirection(direction) {
@@ -99,17 +100,34 @@ io.on("connection", (socket) => {
   // Send welcome message
   socket.emit("message", "Welcome to the MUD! Please register or log in.");
 
-  socket.on("register", async ({ idToken, characterName }) => {
+  socket.on("register", async ({ idToken, characterName, clan }) => {
     try {
       // Verify the ID token using Firebase Admin SDK
       const decodedToken = await auth.verifyIdToken(idToken);
       const uid = decodedToken.uid;
 
-      const player = new Player(characterName, "A new adventurer");
+      // Validate the clan input
+      const validClans = [
+        "Yellow Dog",
+        "Red Bird",
+        "Green Frog",
+        "Blue Flower",
+      ];
+      if (!validClans.includes(clan)) {
+        throw new Error("Invalid Clan");
+      }
+
+      const filter = new Filter();
+      if (filter.isProfane(characterName)) {
+        throw new Error("Character name contains inappropriate language");
+      }
+
+      const player = new Player(characterName, "A new adventurer", clan);
       await db.collection("characters").doc(uid).set({
         name: player.name,
         attributes: player.attributes,
         inventory: player.inventory,
+        clan: player.clan,
       });
 
       players[socket.id].name = characterName;
@@ -128,16 +146,30 @@ io.on("connection", (socket) => {
       const decodedToken = await auth.verifyIdToken(idToken);
       const uid = decodedToken.uid;
 
+      // Check if the player is already connected
+      const isAlreadyConnected = Object.values(players).some(
+        (player) => player.uid === uid
+      );
+      if (isAlreadyConnected) {
+        socket.emit(
+          "message",
+          "You are already logged in from another session."
+        );
+        return;
+      }
       // Retrieve the character document from Firestore
       const characterDoc = await db.collection("characters").doc(uid).get();
       if (characterDoc.exists) {
         const characterData = characterDoc.data();
         players[socket.id].name = characterData.name;
+        players[socket.id].uid = uid; // Store the uid to track connections
         players[socket.id].currentRoom = "town-square"; // Move player to starting room
+        const townSquare = world.rooms["town-square"];
         socket.emit(
           "message",
           `Welcome back, ${characterData.name}! You are now in the town square.`
         );
+        socket.emit("message", townSquare.description);
       } else {
         socket.emit("message", "Character not found.");
       }

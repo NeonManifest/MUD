@@ -12,7 +12,7 @@ class Entity {
 
 // Player class extending Entity
 class Player extends Entity {
-  constructor(name, description) {
+  constructor(name, description, clan = null) {
     super(name, description);
     this.inventory = [];
     this.attributes = {
@@ -24,6 +24,7 @@ class Player extends Entity {
       magic: 10,
       luck: 10,
     };
+    this.clan = clan;
   }
 
   addItem(item) {
