@@ -4,7 +4,16 @@ const socketIo = require("socket.io");
 const cors = require("cors");
 const { db, auth } = require("./firebase");
 const { Player } = require("./entities/entity");
-const Filter = require("bad-words");
+const {
+  RegExpMatcher,
+  englishDataset,
+  englishRecommendedTransformers,
+} = require("obscenity");
+
+const matcher = new RegExpMatcher({
+  ...englishDataset.build(),
+  ...englishRecommendedTransformers,
+});
 
 // Helper function to get the opposite direction
 function getOppositeDirection(direction) {
@@ -90,6 +99,8 @@ const players = {};
 io.on("connection", (socket) => {
   console.log("A user connected");
 
+  let tempUserData = {};
+
   // Initialize player in limbo
   players[socket.id] = {
     id: socket.id,
@@ -100,43 +111,64 @@ io.on("connection", (socket) => {
   // Send welcome message
   socket.emit("message", "Welcome to the MUD! Please register or log in.");
 
-  socket.on("register", async ({ idToken, characterName, clan }) => {
+  socket.on("initiate_registration", async (userData) => {
     try {
-      // Verify the ID token using Firebase Admin SDK
-      const decodedToken = await auth.verifyIdToken(idToken);
-      const uid = decodedToken.uid;
-
-      // Validate the clan input
+      // Validate username and clan
+      if (matcher.getAllMatches(userData.characterName).length > 0) {
+        throw new Error("Character name contains inappropriate language");
+      }
       const validClans = [
         "Yellow Dog",
         "Red Bird",
         "Green Frog",
         "Blue Flower",
       ];
-      if (!validClans.includes(clan)) {
-        throw new Error("Invalid Clan");
+      if (!validClans.includes(userData.clan)) {
+        throw new Error("Invalid clan");
+      }
+      // Store the validated data temporarily
+      tempUserData[socket.id] = {
+        characterName: userData.characterName,
+        clan: userData.clan,
+      };
+      // If validation passes, tell client to create user
+      socket.emit("create_user", { message: "Proceed with user creation" });
+    } catch (error) {
+      socket.emit("registration_error", { message: error.message });
+    }
+  });
+
+  socket.on("complete_registration", async ({ idToken }) => {
+    try {
+      // Verify the ID token
+      const decodedToken = await auth.verifyIdToken(idToken);
+      const uid = decodedToken.uid;
+
+      // Retrieve the temporary user data
+      const userData = tempUserData[socket.id];
+      if (!userData) {
+        throw new Error("Registration data not found");
       }
 
-      const filter = new Filter();
-      if (filter.isProfane(characterName)) {
-        throw new Error("Character name contains inappropriate language");
-      }
-
-      const player = new Player(characterName, "A new adventurer", clan);
+      // Create the character document in Firestore
       await db.collection("characters").doc(uid).set({
-        name: player.name,
-        attributes: player.attributes,
-        inventory: player.inventory,
-        clan: player.clan,
+        name: userData.characterName,
+        clan: userData.clan,
+        currentRoom: "town-square", // Set initial room
+        // Add any other relevant character data
       });
 
-      players[socket.id].name = characterName;
-      socket.emit(
-        "message",
-        "Registration successful! You can now enter the game."
-      );
+      // Clear the temporary data
+      delete tempUserData[socket.id];
+
+      socket.emit("registration_complete", {
+        message: "Registration successful",
+      });
     } catch (error) {
-      socket.emit("message", `Registration failed: ${error.message}`);
+      console.error("Error completing registration:", error);
+      socket.emit("registration_error", {
+        message: "Failed to complete registration: " + error.message,
+      });
     }
   });
 
@@ -165,6 +197,7 @@ io.on("connection", (socket) => {
         players[socket.id].uid = uid; // Store the uid to track connections
         players[socket.id].currentRoom = "town-square"; // Move player to starting room
         const townSquare = world.rooms["town-square"];
+        socket.emit("message", `Login successful.`);
         socket.emit(
           "message",
           `Welcome back, ${characterData.name}! You are now in the town square.`
@@ -196,6 +229,14 @@ io.on("connection", (socket) => {
       case "say":
         if (args.length > 0) {
           const message = args.join(" ");
+          // Check for obscenity and profanity
+          if (matcher.getAllMatches(message).length > 0) {
+            socket.emit(
+              "message",
+              "You consider washing your mouth with soap."
+            );
+            return;
+          }
           // Send message to all players in the same room
           Object.values(players).forEach((p) => {
             if (p.currentRoom === player.currentRoom) {
