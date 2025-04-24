@@ -15,6 +15,16 @@ const matcher = new RegExpMatcher({
   ...englishRecommendedTransformers,
 });
 
+//Helper function to escape HTML characters to prevent XSS attacks
+function escapeHtml(unsafe) {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 // Helper function to get the opposite direction
 function getOppositeDirection(direction) {
   const opposites = {
@@ -150,12 +160,14 @@ io.on("connection", (socket) => {
         throw new Error("Registration data not found");
       }
 
-      // Create the character document in Firestore
+      // Sanitize the user input
+      const sanitizedCharacterName = escapeHtml(userData.characterName);
+      const sanitizedClan = escapeHtml(userData.clan);
+
+      // Create the character document in Firestore with sanitized data
       await db.collection("characters").doc(uid).set({
-        name: userData.characterName,
-        clan: userData.clan,
-        currentRoom: "town-square", // Set initial room
-        // Add any other relevant character data
+        name: sanitizedCharacterName,
+        clan: sanitizedClan,
       });
 
       // Clear the temporary data
