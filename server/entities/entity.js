@@ -12,19 +12,13 @@ class Entity {
 
 // Player class extending Entity
 class Player extends Entity {
-  constructor(name, description, clan = null) {
+  constructor(name, description, clan = null, job = "Rookie") {
     super(name, description);
     this.inventory = [];
-    this.attributes = {
-      hp: 100,
-      mp: 100,
-      tp: 100,
-      strength: 10,
-      dexterity: 10,
-      magic: 10,
-      luck: 10,
-    };
     this.clan = clan;
+    this.job = job;
+    this.level = { job: 1 };
+    this.experience = { job: 0 };
   }
 
   addItem(item) {
@@ -43,25 +37,18 @@ class NPC extends Entity {
   constructor(name, description) {
     super(name, description);
     this.dialogue = [];
-    // Add more NPC-specific properties as needed
   }
 
   addDialogue(line) {
     this.dialogue.push(line);
   }
-
-  // Additional NPC-specific methods
 }
 
 // Item class extending Entity
 class Item extends Entity {
-  constructor(name, description, weight = 1) {
+  constructor(name, description) {
     super(name, description);
-    this.weight = weight;
-    // Add more item-specific properties as needed
   }
-
-  // Additional item-specific methods
 }
 
-module.exports = { Entity, Player, NPC, Item };
+export default { Entity, Player, NPC, Item };

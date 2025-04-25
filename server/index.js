@@ -3,7 +3,7 @@ const http = require("http");
 const socketIo = require("socket.io");
 const cors = require("cors");
 const { db, auth } = require("./firebase");
-const { Player } = require("./entities/entity");
+const { Player } = require("./entities/entity").default;
 const {
   RegExpMatcher,
   englishDataset,
