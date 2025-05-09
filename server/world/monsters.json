@@ -1,0 +1,10 @@
+{
+  "Rat": {
+    "hp": 20,
+    "attack": 5,
+    "guard": 5,
+    "agi": 5,
+    "xp": 5,
+    "description": "A small, but angry rat."
+  }
+}

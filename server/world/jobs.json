@@ -1,0 +1,12 @@
+{
+  "Rookie": {
+    "baseHp": 100,
+    "baseAttack": 5,
+    "baseGuard": 5,
+    "baseAgi": 5,
+    "hpGrowth": 10,
+    "attackGrowth": 1,
+    "guardGrowth": 1,
+    "agiGrowth": 1
+  }
+}

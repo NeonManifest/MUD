@@ -1,0 +1,42 @@
+{
+  "rooms": {
+    "town-square": {
+      "name": "Town Square",
+      "description": "The central square of a small town. Streets lead in all directions.",
+      "exits": {
+        "north": "north-street",
+        "east": "market",
+        "south": "south-street",
+        "west": "tavern"
+      }
+    },
+    "north-street": {
+      "name": "North Street",
+      "description": "A quiet street leading north from the town square.",
+      "exits": {
+        "south": "town-square"
+      }
+    },
+    "market": {
+      "name": "Market",
+      "description": "A bustling market with various stalls and shops.",
+      "exits": {
+        "west": "town-square"
+      }
+    },
+    "south-street": {
+      "name": "South Street",
+      "description": "A street heading south toward the town gate.",
+      "exits": {
+        "north": "town-square"
+      }
+    },
+    "tavern": {
+      "name": "Tavern",
+      "description": "A cozy tavern with a warm fireplace and the smell of ale.",
+      "exits": {
+        "east": "town-square"
+      }
+    }
+  }
+}

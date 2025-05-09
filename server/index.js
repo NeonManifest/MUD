@@ -3,7 +3,7 @@ const http = require("http");
 const socketIo = require("socket.io");
 const cors = require("cors");
 const { db, auth } = require("./firebase");
-const { Player } = require("./entities/entity").default;
+const { Player, Monster } = require("./entities/entity").default;
 const {
   RegExpMatcher,
   englishDataset,
@@ -58,49 +58,8 @@ app.get("/api/example", (req, res) => {
 });
 
 // Game world data
-const world = {
-  rooms: {
-    "town-square": {
-      name: "Town Square",
-      description:
-        "The central square of a small town. Streets lead in all directions.",
-      exits: {
-        north: "north-street",
-        east: "market",
-        south: "south-street",
-        west: "tavern",
-      },
-    },
-    "north-street": {
-      name: "North Street",
-      description: "A quiet street leading north from the town square.",
-      exits: {
-        south: "town-square",
-      },
-    },
-    market: {
-      name: "Market",
-      description: "A bustling market with various stalls and shops.",
-      exits: {
-        west: "town-square",
-      },
-    },
-    "south-street": {
-      name: "South Street",
-      description: "A street heading south toward the town gate.",
-      exits: {
-        north: "town-square",
-      },
-    },
-    tavern: {
-      name: "Tavern",
-      description: "A cozy tavern with a warm fireplace and the smell of ale.",
-      exits: {
-        east: "town-square",
-      },
-    },
-  },
-};
+const world = require("./world/rooms.json");
+const { randomUUID } = require("crypto");
 
 // Player data
 const players = {};
@@ -168,6 +127,7 @@ io.on("connection", (socket) => {
       await db.collection("characters").doc(uid).set({
         name: sanitizedCharacterName,
         clan: sanitizedClan,
+        currentRoom: "town-square",
       });
 
       // Clear the temporary data
@@ -207,14 +167,15 @@ io.on("connection", (socket) => {
         const characterData = characterDoc.data();
         players[socket.id].name = characterData.name;
         players[socket.id].uid = uid; // Store the uid to track connections
-        players[socket.id].currentRoom = "town-square"; // Move player to starting room
-        const townSquare = world.rooms["town-square"];
+        players[socket.id].currentRoom =
+          characterData.currentRoom || "town-square";
+        const currentRoom = world.rooms[players[socket.id].currentRoom];
         socket.emit("message", `Login successful.`);
         socket.emit(
           "message",
-          `Welcome back, ${characterData.name}! You are now in the town square.`
+          `Welcome back, ${characterData.name}! You are now in ${currentRoom.name}.`
         );
-        socket.emit("message", townSquare.description);
+        socket.emit("message", currentRoom.description);
       } else {
         socket.emit("message", "Character not found.");
       }
@@ -228,7 +189,7 @@ io.on("connection", (socket) => {
     delete players[socket.id];
   });
 
-  socket.on("command", (command) => {
+  socket.on("command", async (command) => {
     const player = players[socket.id];
     // Check if the player is logged in
     if (!player.name) {
@@ -289,6 +250,16 @@ io.on("connection", (socket) => {
             `Also here: ${otherPlayersInRoom.map((p) => p.name).join(", ")}`
           );
         }
+        //Add monster information to the look command
+        const monstersInRoom = Object.values(mobs).filter(
+          (m) => m.currentRoom === player.currentRoom && m.battler.hitPoints > 0
+        );
+        if (monstersInRoom.length > 0) {
+          socket.emit(
+            "message",
+            "Monsters here: " + monstersInRoom.map((m) => m.name).join(", ")
+          );
+        }
 
         const availableExits = Object.keys(room.exits).join(", ");
         socket.emit("message", `Exits: ${availableExits}`);
@@ -317,6 +288,14 @@ io.on("connection", (socket) => {
           const oldRoom = player.currentRoom;
           player.currentRoom = currentRoom.exits[direction];
           const newRoom = world.rooms[player.currentRoom];
+          // Update the player's position in the database
+          // Update the player's position in the database
+          await db.collection("characters").doc(player.uid).set(
+            {
+              currentRoom: player.currentRoom,
+            },
+            { merge: true }
+          );
           // Notify other players in the new room that this player is arriving
           Object.values(players).forEach((p) => {
             if (p.id !== socket.id && p.currentRoom === player.currentRoom) {
@@ -348,3 +327,23 @@ io.on("connection", (socket) => {
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+const mobs = {};
+
+//Create monster objects
+function createMonster(name, room) {
+  const id = randomUUID();
+  const monster = new Monster(name, room);
+  mobs[id] = monster;
+}
+
+function createAllMonsters() {
+  createMonster("Rat", "town-square");
+  createMonster("Rat", "north-street");
+  createMonster("Rat", "tavern");
+}
+
+createAllMonsters();
+
+//Server ticks at 4 ticks per second
+setInterval(async () => {}, 250);
